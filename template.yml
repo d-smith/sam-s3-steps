@@ -1,0 +1,26 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Trigger processing by dropping object in a bucket, modifying the content and writing it to another bucket
+Resources:
+  Start:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: index.handler
+      Runtime: nodejs8.10
+      CodeUri: src/
+      Policies: AmazonS3ReadOnlyAccess
+      Events:
+        SourceFileDropped:
+          Type: S3
+          Properties:
+            Bucket: !Ref SourceBucket
+            Events: s3:ObjectCreated:*
+
+  SourceBucket:
+    Type: AWS::S3::Bucket
+
+Outputs:
+
+    SourceBucket:
+      Description: "S3 Bucket name that will trigger a Lambda function upon new objects insertion"
+      Value: !Ref SourceBucket
