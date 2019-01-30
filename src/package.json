@@ -1,0 +1,23 @@
+{
+  "name": "sam-s3-steps",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "postpack": "tarball=$(npm list --depth 0 | sed 's/@/-/g; s/ .*/.tgz/g; 1q;'); tar -tf $tarball | sed 's/^package\\///' | zip -@r package; rm $tarball"
+  },
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "aws-sdk": "^2.386.0"
+  },
+  "dependencies": {
+    "chance": "^1.0.18",
+    "middy": "^0.20.0"
+  },
+  "bundleDependencies": [
+    "middy",
+    "chance"
+  ]
+}

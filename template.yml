@@ -1,13 +1,76 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: Trigger processing by dropping object in a bucket, modifying the content and writing it to another bucket
+
+Parameters:
+  Stage:
+    Type: String
+    Default: dev
+
+Globals:
+  Function:
+    Runtime: nodejs8.10
+
 Resources:
+
+  Initiate:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Join [-, [Initiate, !Ref "Stage"]]
+      Handler: start.start
+      CodeUri: src/package.zip
+      Role: !GetAtt [ InitiateExecutionRole, Arn ]
+      Environment:
+        Variables:
+          BUCKET_NAME: !Ref SourceBucket
+      Events:
+        StartEvent:
+          Type: Api
+          Properties:
+            Path: /initiate
+            Method: post
+
+  InitiateExecutionRole:
+    Type: AWS::IAM::Role
+    DependsOn:
+      - SourceBucket
+    Properties:
+      AssumeRolePolicyDocument: 
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: "sts:AssumeRole"
+      Path: "/"
+      Policies:
+        - PolicyName: S3
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              Effect: Allow
+              Action:
+                - "s3:PutObject"
+              Resource:
+                - !Join ['/', [ !GetAtt SourceBucket.Arn, '*' ]]
+        - PolicyName: AllKidsLoveLog
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                  - logs:CreateLogGroup
+                Resource:
+                  - "arn:aws:logs:*:*:*"
+
   Start:
     Type: AWS::Serverless::Function
     Properties:
+      FunctionName: !Join [-, [Start, !Ref "Stage"]]
       Handler: index.handler
-      Runtime: nodejs8.10
-      CodeUri: src/
+      CodeUri: src/package.zip
       Policies: AmazonS3ReadOnlyAccess
       Events:
         SourceFileDropped:
@@ -15,6 +78,8 @@ Resources:
           Properties:
             Bucket: !Ref SourceBucket
             Events: s3:ObjectCreated:*
+
+
 
   SourceBucket:
     Type: AWS::S3::Bucket
