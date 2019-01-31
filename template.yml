@@ -6,6 +6,10 @@ Parameters:
   Stage:
     Type: String
     Default: dev
+  SourceBucketBaseName:
+    Type: String
+    Default: sourcebucket
+    AllowedPattern: ^[a-z0-9]*$
 
 Globals:
   Function:
@@ -17,12 +21,12 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: !Join [-, [Initiate, !Ref "Stage"]]
-      Handler: start.start
+      Handler: initiate.start
       CodeUri: src/package.zip
       Role: !GetAtt [ InitiateExecutionRole, Arn ]
       Environment:
         Variables:
-          BUCKET_NAME: !Ref SourceBucket
+          BUCKET_NAME: !Join [-, [!Ref SourceBucketBaseName, !Ref Stage]]
       Events:
         StartEvent:
           Type: Api
@@ -32,8 +36,6 @@ Resources:
 
   InitiateExecutionRole:
     Type: AWS::IAM::Role
-    DependsOn:
-      - SourceBucket
     Properties:
       AssumeRolePolicyDocument: 
         Version: '2012-10-17'
@@ -52,7 +54,7 @@ Resources:
               Action:
                 - "s3:PutObject"
               Resource:
-                - !Join ['/', [ !GetAtt SourceBucket.Arn, '*' ]]
+                - !Join ['', ['arn:aws:s3:::', !Ref SourceBucketBaseName, '-', !Ref Stage, '/*']]
         - PolicyName: AllKidsLoveLog
           PolicyDocument:
             Version: '2012-10-17'
@@ -65,13 +67,60 @@ Resources:
                 Resource:
                   - "arn:aws:logs:*:*:*"
 
+  StartExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument: 
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: "sts:AssumeRole"
+      Path: "/"
+      Policies:
+        - PolicyName: CreateExecution
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - "states:StartExecution"
+                Resource:
+                  - !Ref DataMungerProcess
+        - PolicyName: S3
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              Effect: Allow
+              Action:
+                - "s3:GetObject"
+              Resource:
+                - !Join ['', ['arn:aws:s3:::', !Ref SourceBucketBaseName, '-', !Ref Stage, '/*']]
+        - PolicyName: AllKidsLoveLog
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                  - logs:CreateLogGroup
+                Resource:
+                  - "arn:aws:logs:*:*:*"
+
+
+
   Start:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: !Join [-, [Start, !Ref "Stage"]]
-      Handler: index.handler
+      Handler: start.handler
       CodeUri: src/package.zip
-      Policies: AmazonS3ReadOnlyAccess
+      Role: !GetAtt [ StartExecutionRole, Arn ]
+      Environment:
+        Variables:
+          STEP_FN_ARN: !Ref DataMungerProcess
       Events:
         SourceFileDropped:
           Type: S3
@@ -79,13 +128,109 @@ Resources:
             Bucket: !Ref SourceBucket
             Events: s3:ObjectCreated:*
 
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: "sts:AssumeRole"
+      Path: "/"
+      Policies:
+        - PolicyName: SinkWrite
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                Resource:
+                  - !Join ['/', [!GetAtt DestinationBucket.Arn, '*']]
+        - PolicyName: SourceREad
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                Resource:
+                  - !Join ['', ['arn:aws:s3:::', !Ref SourceBucketBaseName, '-', !Ref Stage, '/*']]
+        - PolicyName: AllKidsLoveLog
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                  - logs:CreateLogGroup
+                Resource:
+                  - "arn:aws:logs:*:*:*"
 
 
+  DataMunger:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Join [-, [DataMunger, !Ref "Stage"]]
+      Handler: datamunger.munge
+      CodeUri: src/package.zip
+      Role: !GetAtt [ LambdaExecutionRole, Arn ]
+
+  StatesExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument: 
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - !Sub states.${AWS::Region}.amazonaws.com
+            Action: "sts:AssumeRole"
+      Path: "/"
+      Policies:
+        - PolicyName: StatesExecutionPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - "lambda:InvokeFunction"
+                Resource:
+                  - !GetAtt [ DataMunger, Arn ]
+
+
+  DataMungerProcess:
+    Type: AWS::StepFunctions::StateMachine
+    Properties:
+      StateMachineName: !Join [-, [DataMungerProcess, !Ref "Stage"]]
+      DefinitionString: !Sub |
+        {
+          "Comment":"Simple state machine to wrap retry",
+          "StartAt":"munge",
+          "States": {
+            "munge": {
+              "Type":"Task",
+              "Resource":"${DataMunger.Arn}",
+              "End":true
+            }
+          }
+        }
+      RoleArn: !GetAtt [ StatesExecutionRole, Arn ]
+      
   SourceBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Join [-, [!Ref SourceBucketBaseName, !Ref Stage]]
+
+  DestinationBucket:
     Type: AWS::S3::Bucket
 
 Outputs:
 
-    SourceBucket:
+    SourceBucketName:
       Description: "S3 Bucket name that will trigger a Lambda function upon new objects insertion"
       Value: !Ref SourceBucket

@@ -1,38 +1,16 @@
-const AWS = require('aws-sdk');
-const S3 = new AWS.S3();
-const stepFunctions = new AWS.StepFunctions();
 
+let aws = require('aws-sdk');
+let s3 = new aws.S3();
 
-const middy = require('middy');
-const { httpErrorHandler } = require('middy/middlewares')
-const txnid = require('./middleware/txnid');
-
-const writeBodyObj = require('./s3utils').writeBodyObj;
-
-
-
-
-const startCore = async (event, context) => {
-    console.log(`create called with context ${JSON.stringify(context)}`);
-    console.log(`input payload is ${JSON.stringify(event['body'])}`);
-
-    try {
-        console.log(`write to bucket ${process.env.BUCKET_NAME} with key ${context.txnId}`);
-        await writeBodyObj(S3, process.env.BUCKET_NAME, context.txnId, event['body']);
-    } catch (theError) {
-        console.log(JSON.stringify(theError));
-        return { statusCode: 500, body: 'Error capturing process input' };
-    }
-
-    
-    let responseBody = {
-        transactionId: context.txnId
+exports.handler = async (event, context) => {
+    const bucket = event.Records[0].s3.bucket.name;
+    const key = decodeURIComponent(event.Records[0].s3.object.key.replace(/\+/g, ' '));
+    const processInput = {
+        Bucket: bucket,
+        Key: key
     };
-
-    return {statusCode: 200, body: JSON.stringify(responseBody)};
+    
+    
+    console.log(`start state machine ${process.env.STEP_FN_ARN} with input ${JSON.stringify(processInput)}`);
 };
 
-
-module.exports.start = middy(startCore)
-    .use(txnid())
-    .use(httpErrorHandler());
