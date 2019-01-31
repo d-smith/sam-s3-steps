@@ -128,7 +128,7 @@ Resources:
             Bucket: !Ref SourceBucket
             Events: s3:ObjectCreated:*
 
-  LambdaExecutionRole:
+  DataMungerRole:
     Type: AWS::IAM::Role
     Properties:
       AssumeRolePolicyDocument:
@@ -155,7 +155,7 @@ Resources:
             Statement:
               - Effect: Allow
                 Action:
-                  - s3:PutObject
+                  - s3:GetObject
                 Resource:
                   - !Join ['', ['arn:aws:s3:::', !Ref SourceBucketBaseName, '-', !Ref Stage, '/*']]
         - PolicyName: AllKidsLoveLog
@@ -177,7 +177,10 @@ Resources:
       FunctionName: !Join [-, [DataMunger, !Ref "Stage"]]
       Handler: datamunger.munge
       CodeUri: src/package.zip
-      Role: !GetAtt [ LambdaExecutionRole, Arn ]
+      Role: !GetAtt [ DataMungerRole, Arn ]
+      Environment:
+        Variables:
+          DESTINATION_BUCKET: !Ref DestinationBucket
 
   StatesExecutionRole:
     Type: AWS::IAM::Role

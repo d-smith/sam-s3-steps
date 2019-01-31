@@ -1,6 +1,19 @@
 
-let aws = require('aws-sdk');
-let s3 = new aws.S3();
+const aws = require('aws-sdk');
+const stepFunctions = new aws.StepFunctions();
+
+const startProcess = async (processInput) => {
+
+    var params = {
+        stateMachineArn: process.env.STEP_FN_ARN,
+        input: processInput
+    }
+
+    console.log(`start process execution - stateMachineArn ${process.env.STEP_FUNCTION_ARN}`);
+    let result = await stepFunctions.startExecution(params).promise();
+    return result;
+}
+
 
 exports.handler = async (event, context) => {
     const bucket = event.Records[0].s3.bucket.name;
@@ -12,5 +25,8 @@ exports.handler = async (event, context) => {
     
     
     console.log(`start state machine ${process.env.STEP_FN_ARN} with input ${JSON.stringify(processInput)}`);
+    let result = await startProcess(JSON.stringify(processInput));
+    console.log(result);
+    
 };
 
