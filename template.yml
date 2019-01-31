@@ -218,7 +218,15 @@ Resources:
             "munge": {
               "Type":"Task",
               "Resource":"${DataMunger.Arn}",
-              "End":true
+              "End":true,
+              "Retry": [
+                {
+                  "ErrorEquals": ["Error"],
+                  "IntervalSeconds": 3,
+                  "MaxAttempts" : 2,
+                  "BackoffRate" : 1.5
+                }
+              ]
             }
           }
         }
