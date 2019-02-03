@@ -14,6 +14,8 @@ The data munger task lambda includes a random failure generator. This is to illu
 
 ## deploy
 
+Note that you will have to create then reference your own s3 bucket in the Makefile.
+
 ```console
 make deploy
 ```
@@ -33,22 +35,12 @@ aws apigateway get-stages --rest-api-id asrqll225d
 Now use the info to form the endpoint - https://{api id}.execute-api.{region}.amazonaws.com/{stage}/initiate, e.g. https://asrqll225d.execute-api.us-east-1.amazonaws.com/Stage/initiate
 ```
 
-Determine the source bucket
-
-```console
-aws cloudformation describe-stacks --stack-name sams3steps
-```
-
-Drop a file
-
-```console
-aws s3 cp readme.md s3://sams3steps-sourcebucket-13sk6y00yk39t
-```
-
 View the logs
 
 ```console
+sam logs --name Initiate --stack-name sams3steps
 sam logs --name Start --stack-name sams3steps
+sam logs --name DataMunger --stack-name sams3steps
 ```
 
 
